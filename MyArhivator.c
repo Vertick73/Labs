@@ -12,14 +12,21 @@ enum DateType
     LastFile
 };
 
-void PackFile(FILE *,char *,char *);
+long offset=0;
+
+void PackFile(FILE*,char*,char*);
+void UnPackFile(FILE*,FILE*);
 
 
-__uint8_t CreateMeta(FILE *,char *,long);
+__uint8_t CreateMeta(FILE*,char*);
 
 int main()
 
 {
+
+
+
+    long dataoffset;
     FILE * out;
     if ((out=fopen("TestArr", "wb"))==NULL) 
     {
@@ -27,24 +34,78 @@ int main()
         exit (1);
     }
 
-    __uint8_t t = CreateMeta(out,"/home/test/Рабочий стол/Projects",0);
+    fwrite(&dataoffset, sizeof(long), 1, out);
+    __uint8_t t = CreateMeta(out,"/home/test/Рабочий стол/Projects/ArhTest");
+    dataoffset= ftell(out);
+    fseek( out , 0 , SEEK_SET );  
+    fwrite(&dataoffset, sizeof(long), 1, out);
+    fseek( out , dataoffset , SEEK_SET );
+
     PackFile(out,"/home/test/Рабочий стол/Projects","/home/test/Рабочий стол/Projects");
     fclose(out);
+
+        FILE * test;
+    if ((test=fopen("TestArr", "rb"))==NULL) 
+    {
+        printf("Cannot open file.\n");
+        exit (1);
+    }
+    FILE * test2;
+    if ((test2=fopen("TestArr", "rb"))==NULL) 
+    {
+        printf("Cannot open file.\n");
+        exit (1);
+    }
+
+    UnPackFile(test,test2);
 
     getchar();
 
     return 0;
 }
 
-
-void CopyFile(FILE * in, FILE * out)
+void UnPackFile(FILE* meta,FILE* data)
 {
+    long dataoffset;
+    char name[256];
+    char pathname[1024];
+    long adate;
+    long mdate;
+    long cdate;
+    __uint8_t namelne;
+    __uint8_t dtype;
+    __uint8_t dirback;
 
+    long fileoffset;
+    long filesize;
+
+    fread(&dataoffset, sizeof(dataoffset), 1, meta);
+    fseek( data , dataoffset , SEEK_SET );  
+
+    while(ftell(meta)<dataoffset)
+    {
+         fread(&namelne, sizeof(__uint8_t), 1, meta);   
+         fread(&name, sizeof(char), namelne, meta);  
+         name[namelne]='\0'; 
+         fread(&adate, sizeof(long), 1, meta);   
+         fread(&mdate, sizeof(long), 1, meta);   
+         fread(&cdate, sizeof(long), 1, meta);   
+         fread(&dtype, sizeof(__uint8_t), 1, meta);   
+         fread(&dirback, sizeof(__uint8_t), 1, meta);   
+         if(dtype==(__uint8_t)File)
+         {
+             fread(&fileoffset, sizeof(long), 1, meta);
+             fread(&filesize, sizeof(long), 1, meta);
+             printf("%s  %ld\n",name,filesize);
+
+         }
+            
+
+    }
 
 }
 
-
-void PackFile(FILE * out, char *dir,char * path)
+void PackFile(FILE* out, char* dir,char* path)
 
 {
 
@@ -97,14 +158,14 @@ void PackFile(FILE * out, char *dir,char * path)
             fclose(in);
             
 
-             printf("%s  %d\n",pathname, i);
+            //printf("%s  %d\n",pathname, i);
         }
     }
     
     chdir("..");
     closedir(dp);
 }
-__uint8_t CreateMeta(FILE *out,char *dir,long offset)
+__uint8_t CreateMeta(FILE* out,char* dir)
 {
     DIR *dp;
     struct dirent *entry;
@@ -133,11 +194,11 @@ __uint8_t CreateMeta(FILE *out,char *dir,long offset)
             fwrite(&statbuf.st_mtime, sizeof(long), 1, out);
             fwrite(&statbuf.st_ctime, sizeof(long), 1, out);
             __int8_t DType = Dir;
-            fwrite(&DType,sizeof(__uint8_t),1,out);
-            fwrite(&dirback, sizeof(__uint8_t), 1, out); //TypeData
+            fwrite(&DType,sizeof(__uint8_t),1,out); //TypeData
+            fwrite(&dirback, sizeof(__uint8_t), 1, out); 
             dirback=0;
 
-            dirback = CreateMeta(out,entry->d_name,offset);  
+            dirback = CreateMeta(out,entry->d_name);  
 
         }
         else
@@ -156,6 +217,9 @@ __uint8_t CreateMeta(FILE *out,char *dir,long offset)
             fwrite(&statbuf.st_size, sizeof(long), 1, out);
 
             offset+=statbuf.st_size;
+
+            printf("%ld\n",offset);
+
 
             dirback=0;
 
