@@ -34,6 +34,7 @@ int main()
         exit (1);
     }
 
+
     fwrite(&dataoffset, sizeof(long), 1, out);
     __uint8_t t = CreateMeta(out,"/home/test/Рабочий стол/Projects/ArhTest");
     dataoffset= ftell(out);
