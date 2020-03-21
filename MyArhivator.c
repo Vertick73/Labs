@@ -4,6 +4,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <stdlib.h>
+#include <fcntl.h>
 
 enum DateType
 {
@@ -12,225 +13,277 @@ enum DateType
     LastFile
 };
 
+
+unsigned int CreateMeta(int, char*);
+void PackFile(int, char* , char * ,size_t buffsize);
 long offset=0;
 
-void PackFile(FILE*,char*,char*);
-void UnPackFile(FILE*,FILE*);
-
-
-__uint8_t CreateMeta(FILE*,char*);
-
 int main()
-
 {
-
-
-
-    long dataoffset;
-    FILE * out;
-    if ((out=fopen("TestArr", "wb"))==NULL) 
+    off_t dataoffset;
+    char* path="/home/test/Рабочий стол/Projects/ArhTest.myarh";
+    char* path2="/home/test/Рабочий стол/Projects/Arr";
+    char* path3="/home/test/Рабочий стол/Projects/Unpack";
+    int out,out2;
+    out = open(path,O_WRONLY|O_CREAT,S_IRUSR|S_IWUSR);
+    if(out ==-1)
     {
-        printf("Cannot open file.\n");
-        exit (1);
+        printf("Cannot createmeta: %s \n", path2);
+        exit(0);
     }
-
-
-    fwrite(&dataoffset, sizeof(long), 1, out);
-    __uint8_t t = CreateMeta(out,"/home/test/Рабочий стол/Projects/ArhTest");
-    dataoffset= ftell(out);
-    fseek( out , 0 , SEEK_SET );  
-    fwrite(&dataoffset, sizeof(long), 1, out);
-    fseek( out , dataoffset , SEEK_SET );
-
-    PackFile(out,"/home/test/Рабочий стол/Projects","/home/test/Рабочий стол/Projects");
-    fclose(out);
-
-        FILE * test;
-    if ((test=fopen("TestArr", "rb"))==NULL) 
-    {
-        printf("Cannot open file.\n");
-        exit (1);
-    }
-    FILE * test2;
-    if ((test2=fopen("TestArr", "rb"))==NULL) 
-    {
-        printf("Cannot open file.\n");
-        exit (1);
-    }
-
-    UnPackFile(test,test2);
-
-    getchar();
+    lseek(out,sizeof(dataoffset),SEEK_SET);
+    CreateMeta(out,path2);
+    dataoffset = lseek(out,0,SEEK_CUR);
+    lseek(out,0,SEEK_SET);
+    write(out,&dataoffset,sizeof(dataoffset));
+    lseek(out,dataoffset,SEEK_SET);
+    PackFile(out,path2,path2,1024);   
+    close(out);
+    
+    UnPackFile(path,path3,1024);
+    close(out2);
 
     return 0;
 }
 
-void UnPackFile(FILE* meta,FILE* data)
+unsigned int CreateMeta(int out, char* path)
 {
-    long dataoffset;
-    char name[256];
-    char pathname[1024];
-    long adate;
-    long mdate;
-    long cdate;
-    __uint8_t namelne;
-    __uint8_t dtype;
-    __uint8_t dirback;
-
-    long fileoffset;
-    long filesize;
-
-    fread(&dataoffset, sizeof(dataoffset), 1, meta);
-    fseek( data , dataoffset , SEEK_SET );  
-
-    while(ftell(meta)<dataoffset)
-    {
-         fread(&namelne, sizeof(__uint8_t), 1, meta);   
-         fread(&name, sizeof(char), namelne, meta);  
-         name[namelne]='\0'; 
-         fread(&adate, sizeof(long), 1, meta);   
-         fread(&mdate, sizeof(long), 1, meta);   
-         fread(&cdate, sizeof(long), 1, meta);   
-         fread(&dtype, sizeof(__uint8_t), 1, meta);   
-         fread(&dirback, sizeof(__uint8_t), 1, meta);   
-         if(dtype==(__uint8_t)File)
-         {
-             fread(&fileoffset, sizeof(long), 1, meta);
-             fread(&filesize, sizeof(long), 1, meta);
-             printf("%s  %ld\n",name,filesize);
-
-         }
-            
-
-    }
-
-}
-
-void PackFile(FILE* out, char* dir,char* path)
-
-{
-
-    DIR *dp;
-    struct dirent *entry;
+    DIR* dp;
     struct stat statbuf;
-    char pathname[1024];
-    char buff;
-    strcpy(pathname,path);
+    struct dirent* entry;
+    unsigned char namelen;
+    unsigned int buffLenNow;
+    unsigned int dirback = 0;
+    unsigned int datasize;
+    char metatype;
+    size_t buflen;
+    char buffer[1024];
 
-
-    if((dp=opendir(dir))==NULL)
+    if ((dp = opendir(path)) == NULL)
     {
-        fprintf(stderr,"cannot open dir: %s \n",dir);
-        return;
-    }
-    chdir(dir);
-    while ((entry=readdir(dp))!=NULL)
-    {
-        lstat(entry->d_name,&statbuf);
-        if(S_ISDIR(statbuf.st_mode))
-        {
-            if(strcmp(".",entry->d_name)==0||strcmp("..",entry->d_name)==0)
-            continue;
-            sprintf(pathname, "%s/%s", path, entry->d_name );
-            PackFile(out,entry->d_name,pathname);
-        }
-        else
-        {
-            sprintf(pathname, "%s/%s", path, entry->d_name );
-            FILE * in;
-            if ((in=fopen(pathname, "rb"))==NULL) 
-            {
-                printf("Cannot open file.\n");
-                exit (1);
-            }
-            int c;
-            size_t i;
-            for (i = 0; i < statbuf.st_size/sizeof(buff); i++)
-            {
-                fread(&buff, sizeof(buff), 1, in);
-                fwrite(&buff, sizeof(buff), 1, out);
-                /* code */
-            }
-            if(statbuf.st_size%sizeof(buff)>0)
-            {
-                fread(&buff, statbuf.st_size%sizeof(buff), 1, in);
-                fwrite(&buff, statbuf.st_size%sizeof(buff), 1, out);
-            }
-            fclose(in);
-            
-
-            //printf("%s  %d\n",pathname, i);
-        }
-    }
-    
-    chdir("..");
-    closedir(dp);
-}
-__uint8_t CreateMeta(FILE* out,char* dir)
-{
-    DIR *dp;
-    struct dirent *entry;
-    struct stat statbuf;
-    __uint8_t dirback =0;
-
-
-    if((dp=opendir(dir))==NULL)
-    {
-        fprintf(stderr,"cannot open dir: %s \n",dir);
+        printf("ERR create meta. Cannot open: %s \n", path);
         return dirback+1;
     }
-    chdir(dir);
-    while ((entry=readdir(dp))!=NULL)
+    chdir(path);
+    while ((entry = readdir(dp)) != NULL)
     {
-        lstat(entry->d_name,&statbuf);
-        if(S_ISDIR(statbuf.st_mode))
+        buflen = sizeof(namelen) + sizeof(statbuf.st_atime) + sizeof(statbuf.st_ctime) + sizeof(statbuf.st_mtime)+sizeof(dirback)+sizeof(metatype);
+        lstat(entry->d_name, &statbuf);
+        if (S_ISDIR(statbuf.st_mode))
         {
-            if(strcmp(".",entry->d_name)==0||strcmp("..",entry->d_name)==0)
-            continue;
-            
-            __uint8_t NameLenght = strlen(entry->d_name);
-            fwrite(&NameLenght, sizeof(__uint8_t), 1, out);
-            fwrite(&entry->d_name,sizeof(char),NameLenght,out);
-            fwrite(&statbuf.st_atime, sizeof(long), 1, out);
-            fwrite(&statbuf.st_mtime, sizeof(long), 1, out);
-            fwrite(&statbuf.st_ctime, sizeof(long), 1, out);
-            __int8_t DType = Dir;
-            fwrite(&DType,sizeof(__uint8_t),1,out); //TypeData
-            fwrite(&dirback, sizeof(__uint8_t), 1, out); 
-            dirback=0;
-
-            dirback = CreateMeta(out,entry->d_name);  
-
+            if (strcmp(".", entry->d_name) == 0 || strcmp("..", entry->d_name) == 0)
+                continue;
+            metatype = 1;
         }
         else
         {
-            __uint8_t NameLenght = strlen(entry->d_name);
+            buflen += sizeof(statbuf.st_size) + sizeof(offset);
+            metatype = 2;
+        }
 
-            fwrite(&NameLenght, sizeof(__uint8_t), 1, out);
-            fwrite(&entry->d_name,sizeof(char),NameLenght,out);
-            fwrite(&statbuf.st_atime, sizeof(long), 1, out);
-            fwrite(&statbuf.st_mtime, sizeof(long), 1, out);
-            fwrite(&statbuf.st_ctime, sizeof(long), 1, out);
-            __int8_t DType = File;
-            fwrite(&DType,sizeof(__uint8_t),1,out);
-            fwrite(&dirback, sizeof(__uint8_t), 1, out);
-            fwrite(&offset, sizeof(long), 1, out);
-            fwrite(&statbuf.st_size, sizeof(long), 1, out);
+        namelen = strlen(entry->d_name);
+        buflen += sizeof(char) * namelen;
 
-            offset+=statbuf.st_size;
+        buffLenNow=0;
 
-            printf("%ld\n",offset);
+        datasize = sizeof(namelen);
+        memcpy(&buffer, &namelen, datasize);
+        buffLenNow += datasize;
 
+        datasize = sizeof(char) * namelen;
+        memcpy(&buffer[buffLenNow], &entry->d_name, datasize);
+        buffLenNow += datasize;
 
+        datasize = sizeof(statbuf.st_atime);
+        memcpy(&buffer[buffLenNow], &statbuf.st_atime, datasize);
+        buffLenNow += datasize;
+
+        datasize = sizeof(statbuf.st_ctime);
+        memcpy(&buffer[buffLenNow], &statbuf.st_ctime, datasize);
+        buffLenNow += datasize;
+
+        datasize = sizeof(statbuf.st_mtime);
+        memcpy(&buffer[buffLenNow], &statbuf.st_mtime, datasize);
+        buffLenNow += datasize;
+
+        //dirback
+        datasize = sizeof(dirback);
+        memcpy(&buffer[buffLenNow], &dirback, datasize);
+        buffLenNow += datasize;
+
+        datasize = sizeof(metatype);
+        memcpy(&buffer[buffLenNow], &metatype, datasize);
+        buffLenNow += datasize;
+
+        if (metatype == 2)
+        {
+            datasize = sizeof(statbuf.st_size);
+            memcpy(&buffer[buffLenNow], &statbuf.st_size, datasize);
+            buffLenNow += datasize;
+
+            datasize = sizeof(offset);
+            memcpy(&buffer[buffLenNow], &offset, datasize);
+            buffLenNow += datasize;
+
+            offset += statbuf.st_size;
             dirback=0;
-
+        }
+        printf("write %s %d\n",entry->d_name,buflen);
+        if(write(out,&buffer,buflen)!=buflen)
+        {
+            printf("Faill to write metadata\n");
+            exit(1);
+        }
+        if( metatype==1)
+        {
+            dirback = CreateMeta(out, entry->d_name);
         }
     }
-
     chdir("..");
     closedir(dp);
+    return dirback + 1;
+}
 
-    return dirback+1;
+void PackFile(int out, char* path, char * fullpath,size_t buffsize)
+{
+    DIR* dp;
+    struct stat statbuf;
+    struct dirent* entry;
+    char pathname[4096];
+    char buffer[buffsize];
+    strcpy(pathname, fullpath);
+
+    if ((dp = opendir(path)) == NULL)
+    {
+        printf("ERR pack file. Cannot open: %s \n", path);
+    }
+    chdir(path);
+    while ((entry = readdir(dp)) != NULL)
+    {
+        lstat(entry->d_name, &statbuf);
+        sprintf(pathname, "%s/%s", fullpath, entry->d_name);
+        if (S_ISDIR(statbuf.st_mode))
+        {
+            if (strcmp(".", entry->d_name) == 0 || strcmp("..", entry->d_name) == 0)
+                continue;
+            PackFile(out, entry->d_name, pathname,buffsize);
+        }
+        else
+        {
+            int in = open(pathname,O_RDONLY,S_IRUSR);
+            if(in==-1)
+            {
+                printf("Cannot open file %s\n",pathname);
+                exit(1);
+            }
+            size_t realread;
+            size_t realwrite = 0;
+            while ((realread=read(in,buffer,buffsize))!=0)
+            {
+                if(realread==-1)
+                {
+                    printf("Faill to read %s.\n",pathname);
+                    exit(1);
+                }
+                realwrite+=write(out,buffer,realread);
+            }
+            printf("File %s - successfully packed. Size = %d bytes\n",pathname,realwrite);
+            close(in);
+        }
+
+    }
+    chdir("..");
+    closedir(dp);
+}
+
+void UnPackFile(char* arrpath, char* path,size_t buffsize)
+{
+    int inp = open(arrpath,O_RDONLY,S_IRUSR);
+    int inpdata = open(arrpath,O_RDONLY,S_IRUSR);
+    unsigned char namelen;
+    char pathname[4096];
+    strcpy(pathname,path);
+    char name[255];
+    char buffer[buffsize];
+    size_t filesize;
+    off_t fileoffset;
+    off_t offset;
+    size_t realread;
+    long atime;
+    long ctime;
+    long mtime;
+    unsigned int dirback;
+    char metatype;
+    realread=read(inp,&offset,sizeof(off_t));
+    if (realread==-1||realread==0)
+    {
+        printf("ERR read Arhive\n");
+        exit(1);
+    }
+    //int inpdata = dup(inp);
+    off_t metaoffset = lseek(inp,0,SEEK_CUR);
+    lseek(inpdata,offset,SEEK_SET);
+    metaoffset = lseek(inp,0,SEEK_CUR);
+
+    while (metaoffset<offset)
+    {
+        read(inp,&namelen,sizeof(namelen));
+        read(inp,&name,sizeof(char)*namelen);
+        read(inp,&atime,sizeof(atime));
+        read(inp,&ctime,sizeof(ctime));
+        read(inp,&mtime,sizeof(mtime));
+        read(inp,&dirback,sizeof(dirback));
+        read(inp,&metatype,sizeof(metatype));
+        int pch;
+        while (dirback!=0)
+            {
+                pch=strrchr(pathname,'/')-pathname;
+                pathname[pch]='\0';
+                dirback--;
+            }
+        sprintf(pathname, "%s/%s", pathname, name);
+        
+        if(metatype==2)
+        {
+            read(inp,&filesize,sizeof(filesize));
+            read(inp,&fileoffset,sizeof(fileoffset));            
+            int out = open(pathname,O_WRONLY|O_CREAT,S_IRUSR|S_IWUSR);
+            if(out==-1)
+            {
+                printf("ERR to create file %s\n", pathname);
+                exit(1);
+            }
+            size_t realwrite = 0;
+            while (realwrite<filesize)
+            {
+                if(filesize-realwrite>buffsize)
+                {
+                    read(inpdata,buffer,buffsize);
+                    realwrite+=write(out,buffer,buffsize);
+                }
+                else
+                {
+                    read(inpdata,buffer,filesize-realwrite);
+                    realwrite+=write(out,buffer,filesize-realwrite);
+                }               
+                /* code */
+            }
+            if(realwrite!=filesize)
+            {
+                printf("ERR fail to unpack file %s\n",pathname);
+                exit(1);
+            }
+            printf("File: %s -  -pathname unpack. Size = %d\n",pathname,realwrite);    
+            pch=strrchr(pathname,'/')-pathname;
+            pathname[pch]='\0';
+            close(out);
+        }
+        else if(metatype==1)
+        {
+            mkdir(pathname,0777);
+        }
+        metaoffset = lseek(inp,0,SEEK_CUR);
+    }
     
 
 }
