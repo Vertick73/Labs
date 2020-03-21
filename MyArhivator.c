@@ -23,6 +23,7 @@ int main()
     off_t dataoffset;
     char* path="/home/test/Рабочий стол/Projects/ArhTest.myarh";
     char* path2="/home/test/Рабочий стол/Projects/Arr";
+    //char* path2="/home/test/Рабочий стол/Projects/ArrTest";
     char* path3="/home/test/Рабочий стол/Projects/Unpack";
     int out,out2;
     out = open(path,O_WRONLY|O_CREAT,S_IRUSR|S_IWUSR);
@@ -229,6 +230,7 @@ void UnPackFile(char* arrpath, char* path,size_t buffsize)
     {
         read(inp,&namelen,sizeof(namelen));
         read(inp,&name,sizeof(char)*namelen);
+        name[namelen]='\0';
         read(inp,&atime,sizeof(atime));
         read(inp,&ctime,sizeof(ctime));
         read(inp,&mtime,sizeof(mtime));
@@ -273,7 +275,7 @@ void UnPackFile(char* arrpath, char* path,size_t buffsize)
                 printf("ERR fail to unpack file %s\n",pathname);
                 exit(1);
             }
-            printf("File: %s -  -pathname unpack. Size = %d\n",pathname,realwrite);    
+            printf("File: %s - unpack. Size = %d\n",pathname,realwrite);    
             pch=strrchr(pathname,'/')-pathname;
             pathname[pch]='\0';
             close(out);
