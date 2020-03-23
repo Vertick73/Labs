@@ -15,34 +15,84 @@ enum DateType
 
 
 unsigned int CreateMeta(int, char*);
-void PackFile(int, char* , char * ,size_t buffsize);
+void Pack(int, char* , char * ,size_t buffsize);
+void UnPack(char*, char*,size_t);
 long offset=0;
+off_t dataoffset;
 
-int main()
+int main(int argc, char** argv)
 {
-    off_t dataoffset;
-    char* path="/home/test/Рабочий стол/Projects/ArhTest.myarh";
-    char* path2="/home/test/Рабочий стол/Projects/Arr";
-    //char* path2="/home/test/Рабочий стол/Projects/ArrTest";
-    char* path3="/home/test/Рабочий стол/Projects/Unpack";
-    int out,out2;
-    out = open(path,O_WRONLY|O_CREAT,S_IRUSR|S_IWUSR);
-    if(out ==-1)
+    char* inputpath;
+    char* outpath;
+    int buffersize=1024;
+    for (int i = 1; i < argc; i++)
     {
-        printf("Cannot createmeta: %s \n", path2);
-        exit(0);
+        if (strcmp(argv[i], "--help") == 0)
+        {
+            printf("--input \"path to input dir\" --output \"path to output dir/filename\" pack\t#To pack files\n" );
+            printf("--input \"path to file arhive\" --output \"path to output dir\" unpack\t#To unpack files\n");
+            exit(0);
+        }
+        if (strcmp(argv[i], "--input") == 0)
+        {
+            if ((i + 1) >= argc)
+            {
+                printf("Err: no --input path\n");
+                exit(1);
+            }
+            inputpath = argv[i+1];
+        }
+        if (strcmp(argv[i], "--output") == 0)
+        {
+            if ((i + 1) >= argc)
+            {
+                printf("Err: no --output path\n");
+                exit(1);
+            }
+            outpath=argv[i+1];
+        }
+        if (strcmp(argv[i], "--buffersize") == 0)
+        {
+            if ((i + 1) >= argc)
+            {
+                printf("Err: no --buffersize size\n");
+                exit(1);
+            }
+            buffersize=argv[i+1];
+        }
+        if (strcmp(argv[i], "pack") == 0)
+        {
+            if(inputpath==NULL||outpath==NULL)
+            {
+                printf("Err: no --output path or --input path\n");
+                exit(1);
+            }
+            int out = open(outpath, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
+            if (out == -1)
+            {
+                printf("Cannot create: %s \n", outpath);
+                exit(0);
+            }
+            lseek(out, sizeof(dataoffset), SEEK_SET);
+            CreateMeta(out, inputpath);
+            dataoffset = lseek(out, 0, SEEK_CUR);
+            lseek(out, 0, SEEK_SET);
+            write(out, &dataoffset, sizeof(dataoffset));
+            lseek(out, dataoffset, SEEK_SET);
+            Pack(out, inputpath, inputpath, buffersize);
+            close(out);
+
+        }
+        if (strcmp(argv[i], "unpack") == 0)
+        {
+            if(inputpath==NULL||outpath==NULL)
+            {
+                printf("Err: no --output path or --input path\n");
+                exit(1);
+            }
+            UnPack(inputpath, outpath, buffersize);
+        }
     }
-    lseek(out,sizeof(dataoffset),SEEK_SET);
-    CreateMeta(out,path2);
-    dataoffset = lseek(out,0,SEEK_CUR);
-    lseek(out,0,SEEK_SET);
-    write(out,&dataoffset,sizeof(dataoffset));
-    lseek(out,dataoffset,SEEK_SET);
-    PackFile(out,path2,path2,1024);   
-    close(out);
-    
-    UnPackFile(path,path3,1024);
-    close(out2);
 
     return 0;
 }
@@ -129,7 +179,7 @@ unsigned int CreateMeta(int out, char* path)
             offset += statbuf.st_size;
             dirback=0;
         }
-        printf("write %s %d\n",entry->d_name,buflen);
+        printf("[Meta created] size = %d byte. Name %s\n",buflen,entry->d_name);
         if(write(out,&buffer,buflen)!=buflen)
         {
             printf("Faill to write metadata\n");
@@ -145,7 +195,7 @@ unsigned int CreateMeta(int out, char* path)
     return dirback + 1;
 }
 
-void PackFile(int out, char* path, char * fullpath,size_t buffsize)
+void Pack(int out, char* path, char * fullpath,size_t buffsize)
 {
     DIR* dp;
     struct stat statbuf;
@@ -167,7 +217,7 @@ void PackFile(int out, char* path, char * fullpath,size_t buffsize)
         {
             if (strcmp(".", entry->d_name) == 0 || strcmp("..", entry->d_name) == 0)
                 continue;
-            PackFile(out, entry->d_name, pathname,buffsize);
+            Pack(out, entry->d_name, pathname,buffsize);
         }
         else
         {
@@ -188,16 +238,15 @@ void PackFile(int out, char* path, char * fullpath,size_t buffsize)
                 }
                 realwrite+=write(out,buffer,realread);
             }
-            printf("File %s - successfully packed. Size = %d bytes\n",pathname,realwrite);
+            printf("[Packed] Size = %d byte. Path: %s\n",realwrite,pathname);
             close(in);
         }
-
     }
     chdir("..");
     closedir(dp);
 }
 
-void UnPackFile(char* arrpath, char* path,size_t buffsize)
+void UnPack(char* arrpath, char* path,size_t buffsize)
 {
     int inp = open(arrpath,O_RDONLY,S_IRUSR);
     int inpdata = open(arrpath,O_RDONLY,S_IRUSR);
@@ -215,13 +264,13 @@ void UnPackFile(char* arrpath, char* path,size_t buffsize)
     long mtime;
     unsigned int dirback;
     char metatype;
+    int pch;
     realread=read(inp,&offset,sizeof(off_t));
     if (realread==-1||realread==0)
     {
         printf("ERR read Arhive\n");
         exit(1);
     }
-    //int inpdata = dup(inp);
     off_t metaoffset = lseek(inp,0,SEEK_CUR);
     lseek(inpdata,offset,SEEK_SET);
     metaoffset = lseek(inp,0,SEEK_CUR);
@@ -235,8 +284,7 @@ void UnPackFile(char* arrpath, char* path,size_t buffsize)
         read(inp,&ctime,sizeof(ctime));
         read(inp,&mtime,sizeof(mtime));
         read(inp,&dirback,sizeof(dirback));
-        read(inp,&metatype,sizeof(metatype));
-        int pch;
+        read(inp,&metatype,sizeof(metatype));       
         while (dirback!=0)
             {
                 pch=strrchr(pathname,'/')-pathname;
@@ -268,14 +316,13 @@ void UnPackFile(char* arrpath, char* path,size_t buffsize)
                     read(inpdata,buffer,filesize-realwrite);
                     realwrite+=write(out,buffer,filesize-realwrite);
                 }               
-                /* code */
             }
             if(realwrite!=filesize)
             {
                 printf("ERR fail to unpack file %s\n",pathname);
                 exit(1);
             }
-            printf("File: %s - unpack. Size = %d\n",pathname,realwrite);    
+            printf("[Unpacked] Size = %d byte. Path: %s\n",realwrite,pathname);    
             pch=strrchr(pathname,'/')-pathname;
             pathname[pch]='\0';
             close(out);
@@ -286,6 +333,6 @@ void UnPackFile(char* arrpath, char* path,size_t buffsize)
         }
         metaoffset = lseek(inp,0,SEEK_CUR);
     }
-    
-
+    close(inp);
+    close(inpdata);
 }
